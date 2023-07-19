@@ -1,0 +1,19 @@
+---
+- name: Get Error404
+  hosts: appnodes
+  become: true
+  tasks:
+    - name: Disable Puppet
+      shell:
+        cmd: "puppet agent --disable 'Debug session'"
+
+    - name: Change TokenUrl
+      ansible.builtin.lineinfile:
+        path: /var/opt/rh/eap7/lib/wildfly/properties
+        regexp: 'TokenUrl'
+        line: TokenUrl      Test_GET_ISSUE_404.nl
+
+  #  - name: Restart JBoss service
+  #    service:
+  #      name: eap7-standalone
+  #      state: restarted
