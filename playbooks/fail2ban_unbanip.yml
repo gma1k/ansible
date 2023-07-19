@@ -1,0 +1,17 @@
+---
+- name: 'Unban an IP'
+  hosts: all
+  become: true
+  vars:
+    ip_to_unban: ''
+
+  tasks:
+    - name: 'unban an IP'
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/fail2ban-client
+          - set
+          - ssh
+          - unbanip
+          - "{{ ip_to_unban }}"
+      when: ip_to_unban | string
