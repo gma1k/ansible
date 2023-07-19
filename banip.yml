@@ -1,0 +1,17 @@
+---
+- name: 'Ban an IP'
+  hosts: all
+  become: true
+  vars:
+    ip_to_ban: ''
+
+  tasks:
+    - name: 'ban an IP'
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/fail2ban-client
+          - set
+          - ssh
+          - banip
+          - "{{ ip_to_ban }}"
+      when: ip_to_ban | string
