@@ -1,0 +1,19 @@
+---
+- name: Enable & Run Puppet
+  hosts: hosts
+  become: true
+  tasks:
+    - name: Enable Puppet
+      shell:
+        cmd: "puppet agent --enable"
+
+    - name: Run Puppet
+      shell:
+        cmd: "puppet agent -t"
+      register: result
+      failed_when: result.rc not in [0, 2]
+
+    - name: Restart JBoss service
+      service:
+        name: eap7-standalone
+        state: restarted
