@@ -1,0 +1,118 @@
+---
+- name: Find and kill zombie processes
+  hosts: all
+  become: yes
+  vars:
+    now: "{{ ansible_date_time.date }} {{ ansible_date_time.time }}"
+  tasks:
+    - name: Get the zombie processes
+      shell: ps -eo pid,ppid,state,cmd | awk '$3=="Z"'
+      register: zombies
+
+    - name: Check if there are any zombies
+      debug:
+        msg: "No zombie processes found at {{ now }}"
+      when: zombies.stdout == ""
+
+    - name: Print the zombie processes
+      debug:
+        msg: |
+          Found zombie processes at {{ now }}:
+          {{ zombies.stdout }}
+      when: zombies.stdout != ""
+
+    - name: Ask the user what they want to do
+      pause:
+        prompt: "Do you want to force kill all zombie processes (a), kill them one by one (b), or specify a process ID to kill (c)? (a/b/c) "
+      register: answer
+
+    - block:
+        - name: Get the names of the zombie processes
+          shell: ps -eo pid,state,cmd | awk '$2=="Z" {print $3}'
+          register: znames
+
+        - name: Loop through the names and kill all processes with that name
+          command: killall -9 {{ item }}
+          loop: "{{ znames.stdout_lines }}"
+          register: result
+
+        - name: Check if the kill was successful
+          debug:
+            msg: "Successfully killed all processes named {{ item.item }}"
+          loop: "{{ result.results }}"
+          when: item.rc == 0
+
+        - name: Check if the kill failed
+          debug:
+            msg: "Could not kill all processes named {{ item.item }}"
+          loop: "{{ result.results }}"
+          when: item.rc != 0
+      when: answer.user_input == "a"
+
+    - block:
+        - name: Loop through the zombies and kill their parents
+          command: kill -9 {{ item.split()[1] }}
+          loop: "{{ zombies.stdout_lines }}"
+          register: result
+
+        - name: Check if the kill was successful
+          debug:
+            msg: "Successfully killed parent process {{ item.item.split()[1] }} of zombie {{ item.item.split()[0] }}"
+          loop: "{{ result.results }}"
+          when: item.rc == 0
+
+        - name: Check if the kill failed
+          debug:
+            msg: "Could not kill parent process {{ item.item.split()[1] }} of zombie {{ item.item.split()[0] }}"
+          loop: "{{ result.results }}"
+          when: item.rc != 0
+      when: answer.user_input == "b"
+
+    - block:
+        - name: Ask the user for a process ID to kill
+          pause:
+            prompt: "Enter a process ID to kill: "
+          register: pid
+
+        - name: Check if the process ID is valid and a zombie
+          shell: ps -p {{ pid.user_input }} -o state --no-headers
+          register: state
+
+        - name: Print an error message if the process ID is invalid
+          debug:
+            msg: "Invalid process ID: {{ pid.user_input }}"
+          when: state.stdout == ""
+
+        - name: Print an error message if the process ID is not a zombie
+          debug:
+            msg: "Process ID {{ pid.user_input }} is not a zombie"
+          when: state.stdout != "Z"
+
+        - block:
+            - name: Get the parent process ID and command of the zombie process
+              shell: ps -p {{ pid.user_input }} -o ppid,cmd --no-headers
+              register: pinfo
+
+            - name: Kill the parent process of the zombie process
+              command: kill -9 {{ pinfo.stdout.split()[0] }}
+              register: result
+
+            - name: Check if the kill was successful
+              debug:
+                msg: "Successfully killed parent process {{ pinfo.stdout.split()[0] }} ({{ pinfo.stdout.split()[1] }}) of zombie {{ pid.user_input }}"
+              when: result.rc == 0
+
+            - name: Check if the kill failed
+              debug:
+                msg: "Could not kill parent process {{ pinfo.stdout.split()[0] }} ({{ pinfo.stdout.split()[1] }}) of zombie {{ pid.user_input }}"
+              when: result.rc != 0
+          when:
+            - state.stdout != ""
+            - state.stdout == "Z"
+      when:
+        answer.user_input == "c"
+
+    - block:
+      - fail:
+          msg : "Invalid option: {{ answer.user_input }}"
+      when: answer.user_input not in ["a", "b", "c"]
