@@ -1,0 +1,43 @@
+---
+- name: Find and kill zombie processes
+  hosts: all
+  become: yes
+  vars:
+    now: "{{ ansible_date_time.date }} {{ ansible_date_time.time }}"
+  tasks:
+    - name: Get the zombie processes
+      shell: ps -eo pid,ppid,state,cmd | awk '$3=="Z"'
+      register: zombies
+
+    - name: Check if there are any zombies
+      debug:
+        msg: "No zombie processes found at {{ now }}"
+      when: zombies.stdout == ""
+
+    - name: Print the zombie processes
+      debug:
+        msg: |
+          Found zombie processes at {{ now }}:
+          {{ zombies.stdout }}
+      when: zombies.stdout != ""
+
+    - name: Get the names of the zombie processes
+      shell: ps -eo pid,state,cmd | awk '$2=="Z" {print $3}'
+      register: znames
+
+    - name: Loop through the names and kill all processes with that name
+      command: killall -9 {{ item }}
+      loop: "{{ znames.stdout_lines }}"
+      register: result
+
+    - name: Check if the kill was successful
+      debug:
+        msg: "Successfully killed all processes named {{ item.item }}"
+      loop: "{{ result.results }}"
+      when: item.rc == 0
+
+    - name: Check if the kill failed
+      debug:
+        msg: "Could not kill all processes named {{ item.item }}"
+      loop: "{{ result.results }}"
+      when: item.rc != 0
