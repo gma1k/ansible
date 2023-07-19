@@ -1,0 +1,27 @@
+---
+- hosts: windows
+  gather_facts: no
+  tasks:
+    - name: Find all Java binaries excluding different filesystems
+      win_shell: "Get-ChildItem -Path C:\\ -Filter java.exe -Recurse -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName"
+      register: 'java_files'
+
+    - name: Get the version of each Java binary
+      win_shell: "{{ item }} -version 2>&1 | Select-String version | ForEach-Object { $_.Line.Split()[2].Trim('\"') }"
+      with_items: "{{ java_files.stdout_lines }}"
+      register: 'java_version'
+
+    - name: Print all stdout values from java_version
+      ansible.builtin.debug:
+        msg: "{{ java_version | json_query('results[*].stdout') }}"
+      when: java_version is defined
+
+    - name: Check if Java service is running
+      ansible.windows.win_service:
+        name: JavaService
+      register: java_service
+
+    - name: Display a message if Java service is running
+      debug:
+        msg: "Java service is running"
+      when: java_service.exists and java_service.state == 'running'
